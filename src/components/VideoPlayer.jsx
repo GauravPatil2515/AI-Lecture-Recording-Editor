@@ -11,6 +11,12 @@ export default function VideoPlayer({ videoFile, onTimeUpdate, seekTo }) {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [videoUrl, setVideoUrl] = useState(null);
 
+  // Detect if the file is audio-only
+  const isAudioOnly = videoFile && (
+    videoFile.type.startsWith('audio/') ||
+    /\.(mp3|wav|m4a|ogg|flac|aac|wma)$/i.test(videoFile.name)
+  );
+
   useEffect(() => {
     if (videoFile) {
       const url = URL.createObjectURL(videoFile);
@@ -96,32 +102,76 @@ export default function VideoPlayer({ videoFile, onTimeUpdate, seekTo }) {
 
   return (
     <div className="glass rounded-2xl overflow-hidden animate-scale-in">
-      {/* Video element */}
-      <div className="relative bg-black aspect-video">
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onEnded={() => setIsPlaying(false)}
-          className="w-full h-full object-contain"
-          playsInline
-        />
-
-        {/* Center play overlay */}
-        {!isPlaying && (
-          <button
-            onClick={togglePlay}
-            className="absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity hover:bg-black/40 group"
-          >
-            <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
-              <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
+      {/* Media element */}
+      <div className={`relative bg-black ${isAudioOnly ? 'aspect-[3/1]' : 'aspect-video'}`}>
+        {isAudioOnly ? (
+          <>
+            <audio
+              ref={videoRef}
+              src={videoUrl}
+              onTimeUpdate={handleTimeUpdate}
+              onLoadedMetadata={handleLoadedMetadata}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onEnded={() => setIsPlaying(false)}
+            />
+            {/* Audio visualization / cover */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <div className={`flex items-center gap-1 ${isPlaying ? '' : 'opacity-60'}`}>
+                {[...Array(12)].map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-1.5 rounded-full bg-gradient-to-t from-indigo-500 to-purple-400 transition-all duration-200 ${isPlaying ? 'animate-pulse' : ''}`}
+                    style={{
+                      height: `${12 + Math.sin(i * 0.8) * 16 + (isPlaying ? Math.random() * 20 : 0)}px`,
+                      animationDelay: `${i * 0.1}s`,
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 truncate max-w-[80%]">{videoFile?.name}</p>
             </div>
-          </button>
+            {/* Center play overlay for audio */}
+            {!isPlaying && (
+              <button
+                onClick={togglePlay}
+                className="absolute inset-0 flex items-center justify-center bg-black/20 transition-opacity hover:bg-black/30 group"
+              >
+                <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg className="w-7 h-7 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              onTimeUpdate={handleTimeUpdate}
+              onLoadedMetadata={handleLoadedMetadata}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onEnded={() => setIsPlaying(false)}
+              className="w-full h-full object-contain"
+              playsInline
+            />
+            {/* Center play overlay for video */}
+            {!isPlaying && (
+              <button
+                onClick={togglePlay}
+                className="absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity hover:bg-black/40 group"
+              >
+                <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+              </button>
+            )}
+          </>
         )}
       </div>
 

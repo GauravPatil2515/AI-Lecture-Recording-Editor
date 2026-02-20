@@ -40,14 +40,23 @@ export default function UploadSection({ onUpload, isProcessing, processingStatus
     }
   };
 
+  const isMediaFile = (file) => {
+    if (file.type.startsWith('video/') || file.type.startsWith('audio/')) return true;
+    // Also check by extension for files with no MIME type
+    const ext = file.name.split('.').pop().toLowerCase();
+    return ['mp4','webm','mov','avi','mkv','mp3','wav','m4a','ogg','flac','aac','wma'].includes(ext);
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
     const files = e.dataTransfer.files;
     if (files && files[0]) {
-      if (files[0].type.startsWith('video/')) {
+      if (isMediaFile(files[0])) {
         onUpload(files[0]);
+      } else {
+        alert('Please upload a video or audio file (MP4, WebM, MOV, MP3, WAV, etc.)');
       }
     }
   };
@@ -92,15 +101,15 @@ export default function UploadSection({ onUpload, isProcessing, processingStatus
           </div>
         ) : (
           <p className="text-sm text-gray-500 max-w-sm text-center">
-            Drag & drop a video file or click to browse.
-            <span className="block mt-1 text-gray-600 text-xs">MP4, WebM, MOV supported</span>
+            Drag & drop a video or audio file, or click to browse.
+            <span className="block mt-1 text-gray-600 text-xs">MP4, WebM, MOV, MP3, WAV, M4A supported</span>
           </p>
         )}
 
         <input
           ref={fileInputRef}
           type="file"
-          accept="video/*"
+          accept="video/*,audio/*,.mp4,.webm,.mov,.avi,.mkv,.mp3,.wav,.m4a,.ogg,.flac,.aac"
           onChange={handleChange}
           className="hidden"
           disabled={isProcessing}

@@ -64,16 +64,19 @@ function App() {
     try {
       setIsProcessing(true);
       setProcessingStep(1);
-      setProcessingStatus('Loading video...');
+      setProcessingStatus('Loading file...');
       setVideoFile(file);
 
-      const video = document.createElement('video');
+      // Use <audio> or <video> based on file type to get duration
+      const isAudioOnly = file.type.startsWith('audio/') ||
+        /\.(mp3|wav|m4a|ogg|flac|aac|wma)$/i.test(file.name);
+      const mediaEl = document.createElement(isAudioOnly ? 'audio' : 'video');
       const objectUrl = URL.createObjectURL(file);
-      video.src = objectUrl;
+      mediaEl.src = objectUrl;
 
-      video.onloadedmetadata = async () => {
+      mediaEl.onloadedmetadata = async () => {
         try {
-          const duration = video.duration;
+          const duration = mediaEl.duration;
           setVideoDuration(duration);
           URL.revokeObjectURL(objectUrl);
 
@@ -116,10 +119,11 @@ function App() {
         }
       };
 
-      video.onerror = () => {
-        setProcessingStatus('Error loading video');
+      mediaEl.onerror = () => {
+        setProcessingStatus('Error loading file. Please try a different format.');
         setIsProcessing(false);
         setProcessingStep(0);
+        URL.revokeObjectURL(objectUrl);
       };
     } catch (error) {
       console.error('Upload error:', error);
