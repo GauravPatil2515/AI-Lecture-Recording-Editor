@@ -122,6 +122,7 @@ export function generateMockTranscript(videoDuration = 300) {
   
   return mockSentences.map((item, idx) => ({
     id: `sentence-${idx}`,
+    originalIndex: idx,
     text: item.text,
     timestamp: item.timestamp,
     confidence: 0.92 + Math.random() * 0.08,

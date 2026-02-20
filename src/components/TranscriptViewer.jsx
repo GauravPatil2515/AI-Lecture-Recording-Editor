@@ -24,7 +24,7 @@ export default function TranscriptViewer({
 
   useEffect(() => {
     if (scrollToIndex !== null && transcriptRef.current) {
-      const el = transcriptRef.current.querySelector(`[data-index="${scrollToIndex}"]`);
+      const el = transcriptRef.current.querySelector(`[data-original-index="${scrollToIndex}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('ring-2', 'ring-indigo-400/60');
@@ -34,7 +34,7 @@ export default function TranscriptViewer({
   }, [scrollToIndex]);
 
   const isInSilence = (ts) => silenceSegments.some(s => ts >= s.start && ts <= s.end);
-  const isImportant = (i) => importantIndexes.includes(i);
+  const isImportant = (origIdx) => importantIndexes.includes(origIdx);
 
   if (!transcript || transcript.length === 0) return null;
 
@@ -68,7 +68,8 @@ export default function TranscriptViewer({
       {/* Transcript list */}
       <div ref={transcriptRef} className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
         {transcript.map((item, index) => {
-          const important = isImportant(index);
+          const origIdx = item.originalIndex ?? index;
+          const important = isImportant(origIdx);
           const silence = isInSilence(item.timestamp);
           const confidence = item.confidence || 0.9;
 
@@ -76,6 +77,7 @@ export default function TranscriptViewer({
             <div
               key={item.id || index}
               data-index={index}
+              data-original-index={origIdx}
               className={`group relative rounded-xl px-4 py-3 transition-all duration-200 ${
                 important
                   ? 'bg-yellow-500/[0.06] border-l-2 border-yellow-400/70'
