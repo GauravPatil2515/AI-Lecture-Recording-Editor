@@ -4,198 +4,100 @@
  */
 
 /**
- * Extract audio data from a video file for analysis
- * Uses multiple strategies for maximum browser compatibility:
- * 1. Direct decodeAudioData (fast, works for small/medium files)
- * 2. Video element + captureStream fallback (works for all files)
+ * Extract audio data from a video file for analysis.
+ * Uses Web Audio API decodeAudioData which supports most video containers
+ * (MP4, WebM, MOV) natively in modern browsers.
  * @param {File} videoFile - The uploaded video file
- * @returns {Promise<{samples: Float32Array, sampleRate: number}>} Audio samples and sample rate
+ * @returns {Promise<{samples: Float32Array, sampleRate: number}>}
  */
 export async function extractAudioFromVideo(videoFile) {
-  // Strategy 1: Direct decode via Web Audio API (fast, but may fail for large files or some codecs)
   try {
-    const result = await decodeAudioDirect(videoFile);
-    if (result && result.samples.length > 0) {
-      return result;
-    }
-  } catch (err) {
-    console.warn('Direct audio decode failed, trying stream capture fallback:', err.message);
-  }
+    const arrayBuffer = await readFileAsArrayBuffer(videoFile);
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Strategy 2: Play through a video element and capture the audio stream
-  try {
-    const result = await captureAudioFromVideoElement(videoFile);
-    if (result && result.samples.length > 0) {
-      return result;
+    // Resume context if suspended by autoplay policy
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
     }
-  } catch (err) {
-    console.warn('Stream capture fallback also failed:', err.message);
-  }
 
-  // Strategy 3: Return synthetic silent audio so the pipeline doesn't break
-  console.warn('All audio extraction methods failed. Using silent fallback.');
-  const fallbackRate = 44100;
-  const fallbackDuration = 60; // 1 minute of silence
-  return {
-    samples: new Float32Array(fallbackRate * fallbackDuration),
-    sampleRate: fallbackRate,
-  };
+    const audioBuffer = await decodeAudioSafe(audioContext, arrayBuffer);
+
+    // Downmix to mono
+    const monoSamples = downmixToMono(audioBuffer);
+    const sampleRate = audioBuffer.sampleRate;
+
+    await audioContext.close().catch(() => {});
+
+    console.log(`Audio extracted: ${monoSamples.length} samples at ${sampleRate}Hz (${(monoSamples.length / sampleRate).toFixed(1)}s)`);
+    return { samples: monoSamples, sampleRate };
+  } catch (error) {
+    console.error('Audio extraction failed:', error);
+    // Return silent fallback so pipeline continues
+    const fallbackRate = 44100;
+    const fallbackDuration = 30;
+    return {
+      samples: new Float32Array(fallbackRate * fallbackDuration),
+      sampleRate: fallbackRate,
+    };
+  }
 }
 
 /**
- * Strategy 1 – read file as ArrayBuffer and decode with Web Audio API
+ * Read a File as ArrayBuffer using a Promise wrapper
  */
-function decodeAudioDirect(videoFile) {
+function readFileAsArrayBuffer(file) {
   return new Promise((resolve, reject) => {
-    // Reject files larger than 500 MB to avoid OOM
-    if (videoFile.size > 500 * 1024 * 1024) {
-      return reject(new Error('File too large for direct decode'));
-    }
-
     const reader = new FileReader();
-
-    reader.onload = async (e) => {
-      try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        // Resume in case browser suspended it (autoplay policy)
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-        const arrayBuffer = e.target.result;
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-        // Downmix to mono
-        let monoSamples;
-        if (audioBuffer.numberOfChannels === 1) {
-          monoSamples = new Float32Array(audioBuffer.getChannelData(0));
-        } else {
-          const ch0 = audioBuffer.getChannelData(0);
-          const ch1 = audioBuffer.getChannelData(1);
-          monoSamples = new Float32Array(ch0.length);
-          for (let i = 0; i < ch0.length; i++) {
-            monoSamples[i] = (ch0[i] + ch1[i]) / 2;
-          }
-        }
-
-        await audioContext.close();
-        resolve({ samples: monoSamples, sampleRate: audioBuffer.sampleRate });
-      } catch (error) {
-        reject(new Error('Failed to decode audio: ' + error.message));
-      }
-    };
-
+    reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsArrayBuffer(videoFile);
+    reader.readAsArrayBuffer(file);
   });
 }
 
 /**
- * Strategy 2 – create a <video> element, use captureStream() to grab audio,
- * record it with a ScriptProcessorNode, then return the samples.
- * Plays the video at maximum speed (muted visually) to extract audio quickly.
+ * Safely decode audio data – wraps the callback-based API in a promise
+ * and handles both the promise-based and callback-based signatures.
  */
-function captureAudioFromVideoElement(videoFile) {
+function decodeAudioSafe(audioContext, arrayBuffer) {
   return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    video.muted = false;           // need unmuted for audio capture
-    video.playsInline = true;
-    video.style.display = 'none';
-    document.body.appendChild(video);
-
-    const objectUrl = URL.createObjectURL(videoFile);
-    video.src = objectUrl;
-
-    const cleanup = () => {
-      URL.revokeObjectURL(objectUrl);
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-      if (video.parentNode) video.parentNode.removeChild(video);
-    };
-
-    video.onloadedmetadata = async () => {
-      try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioContext.state === 'suspended') await audioContext.resume();
-
-        const duration = video.duration;
-        if (!isFinite(duration) || duration <= 0) {
-          cleanup();
-          return reject(new Error('Invalid video duration'));
-        }
-
-        const sampleRate = audioContext.sampleRate;
-        // Use OfflineAudioContext for faster-than-realtime decode
-        const offlineCtx = new OfflineAudioContext(1, Math.ceil(sampleRate * duration), sampleRate);
-
-        const source = audioContext.createMediaElementSource(video);
-        // We can't connect MediaElementSource to OfflineAudioContext directly,
-        // so we record in real-time but speed up the video playback
-        const chunks = [];
-        const scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
-
-        source.connect(scriptNode);
-        scriptNode.connect(audioContext.destination);
-
-        scriptNode.onaudioprocess = (e) => {
-          const input = e.inputBuffer.getChannelData(0);
-          chunks.push(new Float32Array(input));
-        };
-
-        // Speed up playback to 4x for faster extraction
-        video.playbackRate = Math.min(4, 16);
-        video.volume = 0.001; // near-silent but still processing audio
-        await video.play();
-
-        video.onended = async () => {
-          scriptNode.disconnect();
-          source.disconnect();
-
-          // Concatenate all chunks
-          const totalLen = chunks.reduce((sum, c) => sum + c.length, 0);
-          const samples = new Float32Array(totalLen);
-          let offset = 0;
-          for (const chunk of chunks) {
-            samples.set(chunk, offset);
-            offset += chunk.length;
-          }
-
-          await audioContext.close();
-          cleanup();
-          resolve({ samples, sampleRate });
-        };
-
-        // Timeout fallback (max 60 seconds of real time)
-        setTimeout(() => {
-          if (!video.ended) {
-            video.pause();
-            scriptNode.disconnect();
-            source.disconnect();
-
-            const totalLen = chunks.reduce((sum, c) => sum + c.length, 0);
-            const samples = new Float32Array(totalLen);
-            let offset = 0;
-            for (const chunk of chunks) {
-              samples.set(chunk, offset);
-              offset += chunk.length;
-            }
-
-            audioContext.close();
-            cleanup();
-            resolve({ samples, sampleRate });
-          }
-        }, 60000);
-      } catch (err) {
-        cleanup();
-        reject(err);
+    try {
+      // Modern browsers return a promise
+      const result = audioContext.decodeAudioData(
+        arrayBuffer,
+        (decoded) => resolve(decoded),
+        (err) => reject(new Error('decodeAudioData failed: ' + (err?.message || err || 'Unknown error')))
+      );
+      // If it also returns a promise, attach handlers
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
       }
-    };
-
-    video.onerror = () => {
-      cleanup();
-      reject(new Error('Failed to load video element'));
-    };
+    } catch (err) {
+      reject(err);
+    }
   });
+}
+
+/**
+ * Downmix AudioBuffer to mono Float32Array
+ */
+function downmixToMono(audioBuffer) {
+  if (audioBuffer.numberOfChannels === 1) {
+    return new Float32Array(audioBuffer.getChannelData(0));
+  }
+  const numChannels = audioBuffer.numberOfChannels;
+  const length = audioBuffer.length;
+  const mono = new Float32Array(length);
+  for (let ch = 0; ch < numChannels; ch++) {
+    const data = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      mono[i] += data[i];
+    }
+  }
+  // Average
+  for (let i = 0; i < length; i++) {
+    mono[i] /= numChannels;
+  }
+  return mono;
 }
 
 /**
@@ -467,10 +369,12 @@ export function generateSummary(transcript, importantIndexes) {
 export function filterExamRelevant(transcript, importantIndexes) {
   const examKeywords = ['exam', 'remember', 'important', 'must know', 'critical', 'definition', 'formula'];
   
-  return transcript.filter((item, index) => {
+  return transcript.filter((item) => {
     const text = item.text.toLowerCase();
     const hasExamKeyword = examKeywords.some(keyword => text.includes(keyword));
-    return hasExamKeyword || importantIndexes.includes(index);
+    // Use originalIndex (from the full transcript) rather than the array iteration index
+    const origIdx = item.originalIndex;
+    return hasExamKeyword || (origIdx !== undefined && importantIndexes.includes(origIdx));
   });
 }
 

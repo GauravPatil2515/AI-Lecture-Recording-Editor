@@ -72,46 +72,54 @@ function App() {
       video.src = objectUrl;
 
       video.onloadedmetadata = async () => {
-        const duration = video.duration;
-        setVideoDuration(duration);
-        URL.revokeObjectURL(objectUrl);
+        try {
+          const duration = video.duration;
+          setVideoDuration(duration);
+          URL.revokeObjectURL(objectUrl);
 
-        setProcessingStep(2);
-        setProcessingStatus('Extracting audio...');
-        const audioResult = await extractAudioFromVideo(file);
-        setAudioData(audioResult.samples);
+          setProcessingStep(2);
+          setProcessingStatus('Extracting audio...');
+          const audioResult = await extractAudioFromVideo(file);
+          setAudioData(audioResult.samples);
 
-        setProcessingStep(3);
-        setProcessingStatus('Analyzing audio for silence...');
-        const silence = detectSilence(audioResult.samples, audioResult.sampleRate, 0.02, 0.5);
-        setSilenceSegments(silence);
+          setProcessingStep(3);
+          setProcessingStatus('Analyzing audio for silence...');
+          const silence = detectSilence(audioResult.samples, audioResult.sampleRate, 0.02, 0.5);
+          setSilenceSegments(silence);
 
-        setProcessingStep(4);
-        setProcessingStatus('Generating transcript...');
-        const transcript = generateMockTranscript(Math.floor(duration));
-        setFullTranscript(transcript);
+          setProcessingStep(4);
+          setProcessingStatus('Generating transcript...');
+          const transcript = generateMockTranscript(Math.floor(duration));
+          setFullTranscript(transcript);
 
-        setProcessingStep(5);
-        setProcessingStatus('Analyzing content importance...');
-        const important = identifyImportantSentences(transcript);
-        setImportantIndexes(important);
+          setProcessingStep(5);
+          setProcessingStatus('Analyzing content importance...');
+          const important = identifyImportantSentences(transcript);
+          setImportantIndexes(important);
 
-        const conceptDensity = calculateConceptDensity(transcript, 3);
-        setConceptDensitySegments(conceptDensity);
+          const conceptDensity = calculateConceptDensity(transcript, 3);
+          setConceptDensitySegments(conceptDensity);
 
-        setProcessingStep(6);
-        setProcessingStatus('Generating summary...');
-        const generatedSummary = generateSummary(transcript, important);
-        setSummary(generatedSummary);
+          setProcessingStep(6);
+          setProcessingStatus('Generating summary...');
+          const generatedSummary = generateSummary(transcript, important);
+          setSummary(generatedSummary);
 
-        setProcessingStatus('');
-        setIsProcessing(false);
-        setProcessingStep(0);
+          setProcessingStatus('');
+          setIsProcessing(false);
+          setProcessingStep(0);
+        } catch (innerError) {
+          console.error('Processing error:', innerError);
+          setProcessingStatus(`Error: ${innerError.message}`);
+          setIsProcessing(false);
+          setProcessingStep(0);
+        }
       };
 
       video.onerror = () => {
         setProcessingStatus('Error loading video');
         setIsProcessing(false);
+        setProcessingStep(0);
       };
     } catch (error) {
       console.error('Upload error:', error);
