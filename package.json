@@ -1,0 +1,31 @@
+{
+  "name": "lecture-editor",
+  "version": "1.0.0",
+  "description": "AI-powered lecture recording editor with advanced analysis features",
+  "type": "module",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "lecture",
+    "editor",
+    "audio",
+    "transcript",
+    "ai"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@tailwindcss/vite": "^4.2.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "autoprefixer": "^10.4.24",
+    "postcss": "^8.5.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwindcss": "^4.2.0",
+    "vite": "^7.3.1"
+  }
+}
